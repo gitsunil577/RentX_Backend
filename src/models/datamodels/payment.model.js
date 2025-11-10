@@ -31,7 +31,9 @@ const paymentSchema = new mongoose.Schema({
         type: Number,
         required: true,
         min: 0,
-        // Amount in INR (Indian Rupees)
+        // Payment amount in INR (Indian Rupees)
+        // Note: Vehicle prices are entered in USD by owners but automatically converted to INR
+        // All transactions are processed in INR through Razorpay
     },
     transactionId: {
         type: String

@@ -162,4 +162,32 @@ const updateCartItemQuantity = asyncHandler(async (req, res) => {
       .status(200)
       .json(new ApiResponse(200, "Quantity updated successfully", cart));
   });
-export { addToCart, getCart, removeItemFromCart, updateCartItemQuantity };
+
+const clearCart = asyncHandler(async (req, res) => {
+    const userDetails = req.user;
+
+    if (!userDetails) {
+        throw new ApiError(401, "Unauthorized: User not found");
+    }
+
+    const userId = userDetails._id;
+
+    // Find and clear the cart
+    const cart = await Cart.findOne({ userId });
+
+    if (!cart) {
+        return res
+            .status(200)
+            .json(new ApiResponse(200, "Cart is already empty", []));
+    }
+
+    // Clear all items from cart
+    cart.items = [];
+    await cart.save();
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, "Cart cleared successfully", cart));
+});
+
+export { addToCart, getCart, removeItemFromCart, updateCartItemQuantity, clearCart };

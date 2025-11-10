@@ -8,6 +8,7 @@ import { ownerRouter } from './routes/owner.routes.js';
 import { vehicleRouter } from './routes/vehicle.routes.js';
 import { cartRouter } from './routes/cart.routes.js';
 import { categoryRouter } from './routes/category.routes.js';
+import { bookingRouter } from './routes/booking.routes.js';
 
 const app = express();
 
@@ -36,5 +37,6 @@ app.use('/api/v1/vehicle', vehicleRouter);
 app.use('/api/v1/cart', cartRouter);
 app.use('/api/v1/category', categoryRouter);
 app.use('/api/v1/payments', paymentRouter);
+app.use('/api/v1/booking', bookingRouter);
 
 export { app };

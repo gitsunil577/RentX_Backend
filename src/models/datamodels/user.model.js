@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  phoneNumber: { type: String },
   refreshToken: { type: String },
   avatar: String,
   typeOfCustomer: { type: String, enum: ["Buyer", "Owner"], default: "Buyer" },

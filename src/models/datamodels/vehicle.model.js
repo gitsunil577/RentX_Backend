@@ -16,10 +16,23 @@ const vehicleSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    priceUSD: {
+      type: Number,
+      required: true,
+      min: [0, "Price cannot be negative"],
+      // Price entered by owner in USD (for display)
+    },
+    priceINR: {
+      type: Number,
+      required: true,
+      min: [0, "Price cannot be negative"],
+      // Converted price in INR (used for payments and calculations)
+    },
     price: {
       type: Number,
       required: true,
       min: [0, "Price cannot be negative"],
+      // Keeping for backward compatibility, stores INR price
     },
     stock: {
       type: Number,

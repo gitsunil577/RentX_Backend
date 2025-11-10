@@ -39,7 +39,8 @@ const bookingSchema = new mongoose.Schema({
         type: Number,
         required: true,
         min: 0,
-        // Amount in INR (Indian Rupees)
+        // Total booking amount in INR (Indian Rupees)
+        // Calculated as: numberOfDays × vehicle.priceINR
     },
     pickupLocation: {
         type: String,

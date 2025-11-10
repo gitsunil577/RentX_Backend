@@ -28,9 +28,14 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
 
 // ---------------- REGISTER ----------------
 const registerUser = asyncHandler(async (req, res) => {
-  const { email, username, password, fullname } = req.body;
+  const { email, username, password, fullname, typeOfCustomer } = req.body;
   if ([email, username, password, fullname].some((field) => !field)) {
     throw new ApiError(400, 'All fields are required');
+  }
+
+  // Validate typeOfCustomer if provided
+  if (typeOfCustomer && !['Buyer', 'Owner'].includes(typeOfCustomer)) {
+    throw new ApiError(400, 'Invalid user type. Must be either Buyer or Owner');
   }
 
   const existingUser = await User.findOne({
@@ -45,6 +50,7 @@ const registerUser = asyncHandler(async (req, res) => {
     username,
     password,
     fullname,
+    typeOfCustomer: typeOfCustomer || 'Buyer', // Default to Buyer if not specified
   });
 
   const createdUser = await User.findById(user._id).select('-password -refreshToken');
@@ -183,7 +189,23 @@ const changePassword = asyncHandler(async (req, res) => {
 
 // ---------------- CURRENT USER ----------------
 const getCurrentUser = asyncHandler(async (req, res) => {
-  return res.status(200).json(new ApiResponse(200, req.user, 'User fetched successfully'));
+  // Add detailed user info for debugging
+  const userInfo = {
+    ...req.user.toObject(),
+    isOwner: req.user.typeOfCustomer === 'Owner',
+    isBuyer: req.user.typeOfCustomer === 'Buyer',
+    hasOwnerProfile: !!req.user.ownerID,
+  };
+
+  console.log('👤 Current User Info:', {
+    id: userInfo._id,
+    username: userInfo.username,
+    email: userInfo.email,
+    typeOfCustomer: userInfo.typeOfCustomer,
+    ownerID: userInfo.ownerID,
+  });
+
+  return res.status(200).json(new ApiResponse(200, userInfo, 'User fetched successfully'));
 });
 
 // ---------------- UPDATE USERNAME ----------------

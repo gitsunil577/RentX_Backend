@@ -12,6 +12,14 @@ const ownerSchema = new mongoose.Schema({
     gstNumber: {
         type: String,
         required: true
+    },
+    phoneNumber: {
+        type: String,
+        required: false
+    },
+    notificationPreferences: {
+        sms: { type: Boolean, default: true },
+        email: { type: Boolean, default: true }
     }
 },{timestamps: true});
 

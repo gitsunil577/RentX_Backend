@@ -198,9 +198,9 @@ export const notifyOwnerNewBooking = async ({ owner, ownerUser, customerUser, bo
           </div>
 
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/owner-bookings"
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/owner-dashboard"
                style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-              View Booking Dashboard
+              View Dashboard
             </a>
           </div>
 
@@ -225,7 +225,7 @@ export const notifyOwnerNewBooking = async ({ owner, ownerUser, customerUser, bo
 
   // SMS Notification
   if (owner.notificationPreferences?.sms !== false && ownerPhone) {
-    const smsMessage = `RentX Alert: New booking for ${vehicle.name}! Customer: ${customerUser.fullname || customerUser.username}, Duration: ${booking.numberOfDays} days, Amount: ₹${booking.totalAmount}. Login to confirm: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/owner-bookings`;
+    const smsMessage = `RentX Alert: New booking for ${vehicle.name}! Customer: ${customerUser.fullname || customerUser.username}, Duration: ${booking.numberOfDays} days, Amount: ₹${booking.totalAmount}. Login to dashboard: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/owner-dashboard`;
 
     const smsResult = await sendSMSNotification({
       to: ownerPhone,

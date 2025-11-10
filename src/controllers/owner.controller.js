@@ -57,7 +57,7 @@ const registerOwner = asyncHandler(async(req,res) => {
         }
     }
 
-    const { storeName, gstNumber, address } = req.body;
+    const { storeName, gstNumber, address, phoneNumber } = req.body;
     if (!storeName || !gstNumber || !address) {
         throw new ApiError(400, "All fields are required: storeName, gstNumber, and address");
     }
@@ -72,7 +72,8 @@ const registerOwner = asyncHandler(async(req,res) => {
     const owner = await Owner.create({
         storeName,
         gstNumber,
-        address
+        address,
+        phoneNumber: phoneNumber || undefined, // Optional phone number
     });
 
     if (!owner) {
@@ -158,6 +159,47 @@ const ownerDetails = asyncHandler(async(req,res) => {
     );
 })
 
+// Update owner profile (phone number, address, etc.)
+const updateOwnerProfile = asyncHandler(async(req, res) => {
+    const user = req.user;
+    const ownerID = user.ownerID;
 
+    // Strict check: Only Owners can update owner profile
+    if (user.typeOfCustomer !== "Owner") {
+        throw new ApiError(403, "Only owners can update owner profile.");
+    }
 
-export { registerOwner, ownerDetails};
+    if (!ownerID) {
+        throw new ApiError(400, "Owner profile not found. Please complete owner registration first.");
+    }
+
+    const { phoneNumber, address, storeName, notificationPreferences } = req.body;
+
+    if (!phoneNumber && !address && !storeName && !notificationPreferences) {
+        throw new ApiError(400, "At least one field is required to update");
+    }
+
+    const updateData = {};
+    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
+    if (address) updateData.address = address;
+    if (storeName) updateData.storeName = storeName;
+    if (notificationPreferences) updateData.notificationPreferences = notificationPreferences;
+
+    const owner = await Owner.findByIdAndUpdate(
+        ownerID,
+        { $set: updateData },
+        { new: true, runValidators: true }
+    );
+
+    if (!owner) {
+        throw new ApiError(404, "Owner profile not found");
+    }
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, "Owner profile updated successfully", owner)
+    );
+})
+
+export { registerOwner, ownerDetails, updateOwnerProfile };

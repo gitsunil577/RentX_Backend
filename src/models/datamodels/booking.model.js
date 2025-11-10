@@ -58,6 +58,18 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         enum: ["Pending", "Paid", "Refunded"],
         default: "Pending"
+    },
+    invoiceNumber: {
+        type: String,
+        // Generated when payment is confirmed
+        // Format: RENTX-INV-XXXXXX-YYYY
+    },
+    invoiceGenerated: {
+        type: Boolean,
+        default: false
+    },
+    invoiceGeneratedAt: {
+        type: Date
     }
 },{timestamps: true});
 

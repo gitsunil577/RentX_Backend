@@ -7,6 +7,7 @@ import { Payment } from '../models/datamodels/payment.model.js';
 import { User } from '../models/datamodels/user.model.js';
 import { Owner } from '../models/datamodels/owner.model.js';
 import { notifyOwnerNewBooking, notifyCustomerBookingConfirmed } from '../utils/notificationService.js';
+import { generateInvoicePDF } from '../utils/invoiceGenerator.js';
 
 const createOrder = async (req, res) => {
   try {
@@ -146,7 +147,7 @@ const verifyPayment = async (req, res) => {
         }
 
         // Create payment record
-        await Payment.create({
+        const paymentRecord = await Payment.create({
           bookingId: booking._id,
           userId,
           paymentMethod: "UPI", // Razorpay supports multiple methods
@@ -155,12 +156,48 @@ const verifyPayment = async (req, res) => {
           transactionId: razorpay_payment_id,
         });
 
+        // Generate invoice and update booking
+        let invoicePDF = null;
+        try {
+          console.log(`📄 Generating invoice for booking: ${booking._id}`);
+
+          // Generate invoice number
+          const timestamp = Date.now().toString().slice(-6);
+          const bookingShort = booking._id.toString().slice(-4).toUpperCase();
+          const invoiceNumber = `RENTX-INV-${timestamp}-${bookingShort}`;
+
+          // Generate invoice PDF
+          const owner = await Owner.findById(vehicle.ownerID._id);
+          const customerUser = await User.findById(userId);
+
+          invoicePDF = await generateInvoicePDF({
+            booking,
+            vehicle,
+            customer: customerUser,
+            owner,
+            payment: paymentRecord
+          });
+
+          // Update booking with invoice information
+          booking.invoiceNumber = invoiceNumber;
+          booking.invoiceGenerated = true;
+          booking.invoiceGeneratedAt = new Date();
+          await booking.save();
+
+          console.log(`✅ Invoice generated: ${invoiceNumber}`);
+        } catch (invoiceError) {
+          console.error(`⚠️ Invoice generation error (continuing with notifications):`, invoiceError.message);
+        }
+
         // Send notifications to owner and customer
         try {
           // Get owner details with user info
           const owner = await Owner.findById(vehicle.ownerID._id);
           const ownerUser = await User.findOne({ ownerID: owner._id });
           const customerUser = await User.findById(userId);
+
+          // Reload booking to ensure invoice fields are available
+          const updatedBooking = await Booking.findById(booking._id);
 
           // Notify owner about new booking
           if (owner && ownerUser && customerUser) {
@@ -169,26 +206,32 @@ const verifyPayment = async (req, res) => {
               owner,
               ownerUser, // Owner's user account for email
               customerUser, // Customer info to show in owner's notification
-              booking,
+              booking: updatedBooking,
               vehicle,
             });
             console.log(`✅ Owner notifications sent:`, ownerNotifications);
           }
 
-          // Notify customer about booking confirmation
+          // Notify customer about booking confirmation with invoice
           if (customerUser) {
             console.log(`📧 Sending confirmation to customer: ${customerUser.email}`);
+            console.log(`   └─ Invoice PDF buffer size: ${invoicePDF ? invoicePDF.length + ' bytes' : 'Not generated'}`);
+            console.log(`   └─ Invoice number: ${updatedBooking.invoiceNumber || 'Not set'}`);
+
             const customerNotifications = await notifyCustomerBookingConfirmed({
               user: customerUser,
-              booking,
+              booking: updatedBooking,
               vehicle,
               owner,
+              payment: paymentRecord,
+              invoicePDF, // Attach invoice PDF to email
             });
             console.log(`✅ Customer notifications sent:`, customerNotifications);
           }
         } catch (notificationError) {
           // Don't fail the booking if notifications fail
           console.error(`⚠️ Notification error (booking still created):`, notificationError.message);
+          console.error(`   └─ Stack trace:`, notificationError.stack);
         }
 
       } catch (bookingError) {

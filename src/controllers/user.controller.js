@@ -28,7 +28,7 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
 
 // ---------------- REGISTER ----------------
 const registerUser = asyncHandler(async (req, res) => {
-  const { email, username, password, fullname, typeOfCustomer } = req.body;
+  const { email, username, password, fullname, typeOfCustomer, phoneNumber } = req.body;
   if ([email, username, password, fullname].some((field) => !field)) {
     throw new ApiError(400, 'All fields are required');
   }
@@ -51,6 +51,7 @@ const registerUser = asyncHandler(async (req, res) => {
     password,
     fullname,
     typeOfCustomer: typeOfCustomer || 'Buyer', // Default to Buyer if not specified
+    phoneNumber: phoneNumber || undefined, // Optional phone number
   });
 
   const createdUser = await User.findById(user._id).select('-password -refreshToken');
@@ -249,6 +250,29 @@ const uploadAvatar = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, user, 'Avatar uploaded successfully'));
 });
 
+// ---------------- UPDATE PROFILE ----------------
+const updateProfile = asyncHandler(async (req, res) => {
+  const { fullname, phoneNumber } = req.body;
+
+  if (!fullname && !phoneNumber) {
+    throw new ApiError(400, 'At least one field is required to update');
+  }
+
+  const updateData = {};
+  if (fullname) updateData.fullname = fullname;
+  if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: updateData },
+    { new: true, runValidators: true }
+  ).select('-password -refreshToken');
+
+  if (!user) throw new ApiError(404, 'User not found');
+
+  return res.status(200).json(new ApiResponse(200, user, 'Profile updated successfully'));
+});
+
 export {
   registerUser,
   loginUser,
@@ -258,4 +282,5 @@ export {
   getCurrentUser,
   updateUserName,
   uploadAvatar,
+  updateProfile,
 };

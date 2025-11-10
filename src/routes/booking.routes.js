@@ -7,6 +7,7 @@ import {
   getBookingById,
   updateBookingStatus,
   cancelBooking,
+  downloadInvoice,
 } from "../controllers/booking.controller.js";
 
 const router = Router();
@@ -23,5 +24,8 @@ router.route("/update-status/:bookingId").put(verifyJWT, isOwner, updateBookingS
 // Shared Routes - Both buyers and owners can access (with proper authorization check in controller)
 router.route("/booking/:bookingId").get(verifyJWT, getBookingById);
 router.route("/cancel-booking/:bookingId").put(verifyJWT, cancelBooking);
+
+// Invoice Route - Download invoice for a booking (customer or owner)
+router.route("/invoice/:bookingId").get(verifyJWT, downloadInvoice);
 
 export { router as bookingRouter };

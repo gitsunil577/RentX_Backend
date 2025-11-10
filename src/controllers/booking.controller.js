@@ -4,6 +4,14 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Booking } from "../models/datamodels/booking.model.js";
 import { Vehicle } from "../models/datamodels/vehicle.model.js";
 import { User } from "../models/datamodels/user.model.js";
+import { Owner } from "../models/datamodels/owner.model.js";
+import { Payment } from "../models/datamodels/payment.model.js";
+import {
+  notifyCustomerBookingStatusUpdate,
+  notifyBookingCancellation,
+  notifyOwnerBookingCancellation
+} from "../utils/notificationService.js";
+import { generateInvoicePDF } from "../utils/invoiceGenerator.js";
 
 // Create a new booking (All authenticated users)
 const createBooking = asyncHandler(async (req, res) => {
@@ -217,6 +225,9 @@ const updateBookingStatus = asyncHandler(async (req, res) => {
     }
   }
 
+  // Store old status for notification
+  const oldStatus = booking.status;
+
   booking.status = status;
   await booking.save();
 
@@ -225,6 +236,29 @@ const updateBookingStatus = asyncHandler(async (req, res) => {
     .populate("ownerId", "storeName address")
     .populate("userId", "fullname email username")
     .exec();
+
+  // Send notification to customer about status change
+  try {
+    const customerUser = await User.findById(booking.userId);
+    const vehicle = await Vehicle.findById(booking.vehicleId);
+    const owner = await Owner.findById(booking.ownerId);
+
+    if (customerUser && vehicle && owner && oldStatus !== status) {
+      console.log(`📧 Sending status update notification to customer: ${customerUser.email}`);
+      const notifications = await notifyCustomerBookingStatusUpdate({
+        user: customerUser,
+        booking,
+        vehicle,
+        owner,
+        oldStatus,
+        newStatus: status,
+      });
+      console.log(`✅ Status update notifications sent:`, notifications);
+    }
+  } catch (notificationError) {
+    // Don't fail the booking status update if notifications fail
+    console.error(`⚠️ Notification error (status update still completed):`, notificationError.message);
+  }
 
   return res.status(200).json(
     new ApiResponse(200, "Booking status updated successfully", updatedBooking)
@@ -274,9 +308,129 @@ const cancelBooking = asyncHandler(async (req, res) => {
     .populate("userId", "fullname email username")
     .exec();
 
+  // Send notifications to both customer and owner
+  try {
+    const customerUser = await User.findById(booking.userId);
+    const owner = await Owner.findById(booking.ownerId);
+    const ownerUser = await User.findOne({ ownerID: owner._id });
+
+    // Determine who cancelled the booking
+    const cancelledBy = isBookingOwner ? 'customer' : 'owner';
+
+    console.log(`📧 Booking cancelled by: ${cancelledBy}`);
+    console.log(`   └─ Sending notifications to BOTH customer and owner...`);
+
+    // ALWAYS notify customer about cancellation (whether they cancelled or owner cancelled)
+    if (customerUser && vehicle && owner) {
+      console.log(`📧 Sending cancellation notification to customer: ${customerUser.email}`);
+      const customerNotifications = await notifyBookingCancellation({
+        user: customerUser,
+        booking,
+        vehicle,
+        owner,
+        cancelledBy,
+      });
+      console.log(`✅ Customer cancellation notifications sent:`, customerNotifications);
+    }
+
+    // ALWAYS notify owner about cancellation (whether customer cancelled or owner cancelled)
+    if (owner && ownerUser && customerUser && vehicle) {
+      console.log(`📧 Sending cancellation notification to owner: ${owner.storeName}`);
+      const ownerNotifications = await notifyOwnerBookingCancellation({
+        owner,
+        ownerUser,
+        customerUser,
+        booking,
+        vehicle,
+        cancelledBy, // Pass who cancelled so owner knows
+      });
+      console.log(`✅ Owner cancellation notifications sent:`, ownerNotifications);
+    }
+  } catch (notificationError) {
+    // Don't fail the cancellation if notifications fail
+    console.error(`⚠️ Notification error (cancellation still completed):`, notificationError.message);
+  }
+
   return res.status(200).json(
     new ApiResponse(200, "Booking cancelled successfully", updatedBooking)
   );
+});
+
+// Download invoice for a booking
+const downloadInvoice = asyncHandler(async (req, res) => {
+  const { bookingId } = req.params;
+  const user = req.user;
+
+  if (!bookingId) {
+    throw new ApiError(400, "Booking ID is required");
+  }
+
+  // Fetch booking
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    throw new ApiError(404, "Booking not found");
+  }
+
+  // Check authorization - user must be either the booking owner or the vehicle owner
+  const isBookingOwner = booking.userId.toString() === user._id.toString();
+  const isVehicleOwner = user.ownerID && booking.ownerId.toString() === user.ownerID.toString();
+
+  if (!isBookingOwner && !isVehicleOwner) {
+    throw new ApiError(403, "You are not authorized to download this invoice");
+  }
+
+  // Check if booking has been paid
+  if (booking.paymentStatus !== "Paid") {
+    throw new ApiError(400, "Invoice not available. Booking payment is not completed.");
+  }
+
+  try {
+    console.log(`📄 Generating invoice for download: ${bookingId}`);
+
+    // Fetch related data
+    const vehicle = await Vehicle.findById(booking.vehicleId);
+    const customer = await User.findById(booking.userId);
+    const owner = await Owner.findById(booking.ownerId);
+    const payment = await Payment.findOne({ bookingId: booking._id });
+
+    if (!vehicle || !customer || !owner) {
+      throw new ApiError(500, "Missing required data for invoice generation");
+    }
+
+    // Generate invoice number if not already generated
+    if (!booking.invoiceNumber) {
+      const timestamp = Date.now().toString().slice(-6);
+      const bookingShort = booking._id.toString().slice(-4).toUpperCase();
+      booking.invoiceNumber = `RENTX-INV-${timestamp}-${bookingShort}`;
+      booking.invoiceGenerated = true;
+      booking.invoiceGeneratedAt = new Date();
+      await booking.save();
+    }
+
+    // Generate PDF
+    const pdfBuffer = await generateInvoicePDF({
+      booking,
+      vehicle,
+      customer,
+      owner,
+      payment
+    });
+
+    // Set response headers for PDF download
+    const filename = `${booking.invoiceNumber}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    console.log(`✅ Invoice downloaded: ${filename}`);
+
+    // Send PDF buffer
+    return res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error(`❌ Invoice generation error:`, error);
+    throw new ApiError(500, `Failed to generate invoice: ${error.message}`);
+  }
 });
 
 export {
@@ -286,4 +440,5 @@ export {
   getBookingById,
   updateBookingStatus,
   cancelBooking,
+  downloadInvoice,
 };

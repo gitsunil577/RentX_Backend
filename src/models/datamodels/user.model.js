@@ -7,7 +7,18 @@ const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  phoneNumber: { type: String },
+  phoneNumber: {
+    type: String,
+    validate: {
+      validator: function(v) {
+        // Allow empty/null values, but if provided, validate format
+        if (!v) return true;
+        // Accepts formats: +1234567890, +12 1234567890, +12-123-456-7890, etc.
+        return /^\+?[1-9]\d{1,14}$/.test(v.replace(/[\s-]/g, ''));
+      },
+      message: props => `${props.value} is not a valid phone number! Use international format (e.g., +919876543210)`
+    }
+  },
   refreshToken: { type: String },
   avatar: String,
   typeOfCustomer: { type: String, enum: ["Buyer", "Owner"], default: "Buyer" },

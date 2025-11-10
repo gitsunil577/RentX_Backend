@@ -1,5 +1,5 @@
 import {Router} from 'express';
-import { loginUser, logoutUser, registerUser ,refreshAccessToken, changePassword, getCurrentUser, updateUserName, uploadAvatar} from '../controllers/user.controller.js';
+import { loginUser, logoutUser, registerUser ,refreshAccessToken, changePassword, getCurrentUser, updateUserName, uploadAvatar, updateProfile} from '../controllers/user.controller.js';
 import { upload } from '../middlewares/multer.middleware.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
@@ -25,6 +25,7 @@ router.route("/change-password").post(verifyJWT, changePassword);
 router.route("/current-user").get(verifyJWT, getCurrentUser);
 router.route("/update-username").post(verifyJWT, updateUserName);
 router.route("/upload-avatar").post(verifyJWT, upload.single("avatar"), uploadAvatar);
+router.route("/update-profile").put(verifyJWT, updateProfile);
 
 
 // In user.routes.js, add this test route

@@ -18,8 +18,8 @@ app.use(cookieParser());
 // ✅ CORS CONFIG (critical for cookies)
 const allowedOrigins = process.env.ORIGIN_URL
   ? process.env.ORIGIN_URL.split(',')
-  :['https://rent-x-frontend.vercel.app/'];
-  //: ['http://localhost:5173']; // frontend React default port
+  //:['https://rent-x-frontend.vercel.app/'];
+  : ['http://localhost:5173']; // frontend React default port
 app.use(
   cors({
     origin: allowedOrigins,

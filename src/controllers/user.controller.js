@@ -4,6 +4,8 @@ import { User } from '../models/datamodels/user.model.js';
 import { uploadToCloudinary } from '../utils/cloudinary.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { sendOTPEmail } from '../utils/emailService.js';
 
 // ---------------- TOKEN GENERATOR ----------------
 const generateAccessTokenAndRefreshToken = async (userId) => {
@@ -273,6 +275,130 @@ const updateProfile = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, user, 'Profile updated successfully'));
 });
 
+// ---------------- FORGOT PASSWORD (SEND OTP) ----------------
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    throw new ApiError(400, 'Email is required');
+  }
+
+  // Find user by email
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, 'User with this email does not exist');
+  }
+
+  // Generate 6-digit OTP
+  const otp = crypto.randomInt(100000, 999999).toString();
+
+  // Set OTP expiry to 10 minutes from now
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+  // Save OTP and expiry to user document
+  user.resetPasswordOTP = otp;
+  user.resetPasswordOTPExpiry = otpExpiry;
+  await user.save({ validateBeforeSave: false });
+
+  // Send OTP via email
+  try {
+    await sendOTPEmail(user.email, otp, user.fullname || user.username);
+    return res.status(200).json(
+      new ApiResponse(200, { email: user.email }, 'OTP sent successfully to your email')
+    );
+  } catch (error) {
+    // If email fails, clear OTP from database
+    user.resetPasswordOTP = undefined;
+    user.resetPasswordOTPExpiry = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    console.error('Error sending OTP email:', error);
+    throw new ApiError(500, 'Failed to send OTP. Please try again later.');
+  }
+});
+
+// ---------------- VERIFY OTP ----------------
+const verifyOTP = asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    throw new ApiError(400, 'Email and OTP are required');
+  }
+
+  // Find user by email
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  // Check if OTP exists
+  if (!user.resetPasswordOTP || !user.resetPasswordOTPExpiry) {
+    throw new ApiError(400, 'No OTP found. Please request a new one.');
+  }
+
+  // Check if OTP has expired
+  if (new Date() > user.resetPasswordOTPExpiry) {
+    // Clear expired OTP
+    user.resetPasswordOTP = undefined;
+    user.resetPasswordOTPExpiry = undefined;
+    await user.save({ validateBeforeSave: false });
+    throw new ApiError(400, 'OTP has expired. Please request a new one.');
+  }
+
+  // Verify OTP
+  if (user.resetPasswordOTP !== otp) {
+    throw new ApiError(400, 'Invalid OTP');
+  }
+
+  // OTP is valid - return success (don't clear OTP yet, need it for password reset)
+  return res.status(200).json(
+    new ApiResponse(200, { email: user.email }, 'OTP verified successfully')
+  );
+});
+
+// ---------------- RESET PASSWORD ----------------
+const resetPassword = asyncHandler(async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    throw new ApiError(400, 'Email, OTP, and new password are required');
+  }
+
+  // Find user by email
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  // Check if OTP exists
+  if (!user.resetPasswordOTP || !user.resetPasswordOTPExpiry) {
+    throw new ApiError(400, 'No OTP found. Please request a new one.');
+  }
+
+  // Check if OTP has expired
+  if (new Date() > user.resetPasswordOTPExpiry) {
+    user.resetPasswordOTP = undefined;
+    user.resetPasswordOTPExpiry = undefined;
+    await user.save({ validateBeforeSave: false });
+    throw new ApiError(400, 'OTP has expired. Please request a new one.');
+  }
+
+  // Verify OTP
+  if (user.resetPasswordOTP !== otp) {
+    throw new ApiError(400, 'Invalid OTP');
+  }
+
+  // Update password and clear OTP fields
+  user.password = newPassword;
+  user.resetPasswordOTP = undefined;
+  user.resetPasswordOTPExpiry = undefined;
+  await user.save();
+
+  return res.status(200).json(
+    new ApiResponse(200, {}, 'Password reset successfully. You can now login with your new password.')
+  );
+});
+
 export {
   registerUser,
   loginUser,
@@ -283,4 +409,7 @@ export {
   updateUserName,
   uploadAvatar,
   updateProfile,
+  forgotPassword,
+  verifyOTP,
+  resetPassword,
 };

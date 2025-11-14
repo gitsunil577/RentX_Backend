@@ -22,7 +22,9 @@ const userSchema = new mongoose.Schema({
   refreshToken: { type: String },
   avatar: String,
   typeOfCustomer: { type: String, enum: ["Buyer", "Owner"], default: "Buyer" },
-  ownerID: { type: mongoose.Schema.Types.ObjectId, ref: "Owner" }
+  ownerID: { type: mongoose.Schema.Types.ObjectId, ref: "Owner" },
+  resetPasswordOTP: { type: String },
+  resetPasswordOTPExpiry: { type: Date }
 });
 
 userSchema.pre("save", async function(next) {

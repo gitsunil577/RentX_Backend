@@ -5,7 +5,7 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-8.19.3-green)
 ![License](https://img.shields.io/badge/License-ISC-blue)
 
-RESTful API backend for E-Rental System - A premium vehicle rental platform. Built with Node.js, Express, and MongoDB.
+RESTful API backend for RentX_Backend - A premium vehicle rental platform. Built with Node.js, Express, and MongoDB.
 
 ## 🚀 Features
 
@@ -65,7 +65,7 @@ Before you begin, ensure you have:
 
 ### 1. Clone the Repository
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/gitsunil577/RentX_Backend.git
 cd E-Rental\ System/E-Rental_backend
 ```
 
@@ -464,7 +464,7 @@ This project is licensed under the ISC License.
 
 ## 👥 Authors
 
-- Your Name - Initial work
+- Sunil Dalai - Initial work
 
 ## 🙏 Acknowledgments
 

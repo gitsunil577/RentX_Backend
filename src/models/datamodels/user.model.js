@@ -24,7 +24,10 @@ const userSchema = new mongoose.Schema({
   typeOfCustomer: { type: String, enum: ["Buyer", "Owner"], default: "Buyer" },
   ownerID: { type: mongoose.Schema.Types.ObjectId, ref: "Owner" },
   resetPasswordOTP: { type: String },
-  resetPasswordOTPExpiry: { type: Date }
+  resetPasswordOTPExpiry: { type: Date },
+  // Google Authentication fields
+  googleUID: { type: String, unique: true, sparse: true }, // Firebase UID
+  isGoogleUser: { type: Boolean, default: false }
 });
 
 userSchema.pre("save", async function(next) {

@@ -6,6 +6,7 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { sendOTPEmail } from '../utils/emailService.js';
+import { verifyGoogleToken } from '../config/firebase-admin.js';
 
 // ---------------- TOKEN GENERATOR ----------------
 const generateAccessTokenAndRefreshToken = async (userId) => {
@@ -108,6 +109,92 @@ const loginUser = asyncHandler(async (req, res) => {
       'User logged in successfully'
     )
   );
+});
+
+// ---------------- GOOGLE LOGIN ----------------
+const googleLogin = asyncHandler(async (req, res) => {
+  const { idToken, email, displayName, photoURL, uid } = req.body;
+
+  if (!idToken) {
+    throw new ApiError(400, 'Google ID token is required');
+  }
+
+  try {
+    // Verify the Google ID token with Firebase Admin
+    const decodedToken = await verifyGoogleToken(idToken);
+
+    // Check if the email from the token matches the provided email
+    if (decodedToken.email !== email) {
+      throw new ApiError(401, 'Token email mismatch');
+    }
+
+    // Check if user already exists
+    let user = await User.findOne({ email: decodedToken.email });
+
+    if (!user) {
+      // Create a new user if they don't exist
+      // Generate a username from email or display name
+      let username = displayName?.replace(/\s+/g, '').toLowerCase() || email.split('@')[0];
+
+      // Check if username already exists, append random string if needed
+      const existingUsername = await User.findOne({ username });
+      if (existingUsername) {
+        username = `${username}${Math.floor(Math.random() * 10000)}`;
+      }
+
+      user = await User.create({
+        email: decodedToken.email,
+        username,
+        fullname: displayName || email.split('@')[0],
+        password: crypto.randomBytes(32).toString('hex'), // Random password for Google users
+        avatar: photoURL || undefined,
+        googleUID: uid,
+        typeOfCustomer: 'Buyer', // Default to Buyer
+        isGoogleUser: true,
+      });
+
+      console.log('New Google user created:', user.email);
+    } else {
+      // Update existing user's Google info if needed
+      if (!user.googleUID) {
+        user.googleUID = uid;
+        user.isGoogleUser = true;
+        if (photoURL && !user.avatar) {
+          user.avatar = photoURL;
+        }
+        await user.save({ validateBeforeSave: false });
+      }
+      console.log('Existing user logged in via Google:', user.email);
+    }
+
+    // Generate tokens
+    const { accessToken, refreshToken } = await generateAccessTokenAndRefreshToken(user._id);
+    const loggedInUser = await User.findById(user._id).select('-password -refreshToken');
+
+    // Cookies configuration
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+      path: '/',
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    };
+
+    // Set cookies
+    res.cookie('accessToken', accessToken, cookieOptions);
+    res.cookie('refreshToken', refreshToken, cookieOptions);
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        { user: loggedInUser, accessToken, refreshToken },
+        'Google sign-in successful'
+      )
+    );
+  } catch (error) {
+    console.error('Google login error:', error);
+    throw new ApiError(401, error.message || 'Google authentication failed');
+  }
 });
 
 // ---------------- LOGOUT ----------------
@@ -402,6 +489,7 @@ const resetPassword = asyncHandler(async (req, res) => {
 export {
   registerUser,
   loginUser,
+  googleLogin,
   logoutUser,
   refreshAccessToken,
   changePassword,

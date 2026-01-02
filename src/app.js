@@ -10,6 +10,7 @@ import { cartRouter } from './routes/cart.routes.js';
 import { categoryRouter } from './routes/category.routes.js';
 import { bookingRouter } from './routes/booking.routes.js';
 import { contactRouter } from './routes/contact.routes.js';
+import chatbotRouter from './routes/chatbot.routes.js';
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use('/api/v1/category', categoryRouter);
 app.use('/api/v1/payments', paymentRouter);
 app.use('/api/v1/booking', bookingRouter);
 app.use('/api/v1/contact', contactRouter);
+app.use('/api/v1/chatbot', chatbotRouter);
 
 export { app };
  

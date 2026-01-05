@@ -13,11 +13,12 @@ RUN npm ci --only=production
 # Copy source code
 COPY . .
 
-# Expose port
-EXPOSE 8000
+# Expose port (Cloud Run will inject PORT env var)
+EXPOSE 8080
 
 # Set environment to production
 ENV NODE_ENV=production
+ENV PORT=8080
 
 # Start the application
 CMD ["node", "-r", "dotenv/config", "--experimental-json-modules", "src/index.js"]

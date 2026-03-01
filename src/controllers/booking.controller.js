@@ -145,7 +145,7 @@ const getOwnerBookings = asyncHandler(async (req, res) => {
 
 // Get booking by ID
 const getBookingById = asyncHandler(async (req, res) => {
-  const { bookingId } = req.params;
+  const { bookingId } = req.params;  //Request parameter for booking ID or URL
   const user = req.user;
 
   if (!bookingId) {

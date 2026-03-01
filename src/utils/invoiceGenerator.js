@@ -6,9 +6,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/**
- * Format date to readable string
- */
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString('en-IN', {
     day: '2-digit',
@@ -17,34 +14,31 @@ const formatDate = (date) => {
   });
 };
 
-/**
- * Format currency to INR
- */
+// Use Rs. prefix — PDFKit built-in fonts don't support the ₹ Unicode glyph
 const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR'
+  const formatted = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(amount);
+  return `Rs. ${formatted}`;
 };
 
-/**
- * Generate a unique invoice number
- */
 const generateInvoiceNumber = (bookingId) => {
   const timestamp = Date.now().toString().slice(-6);
   const bookingShort = bookingId.toString().slice(-4).toUpperCase();
   return `RENTX-INV-${timestamp}-${bookingShort}`;
 };
 
+// Truncate long strings so they never wrap to a new line
+const trunc = (str, max) => {
+  if (!str) return 'N/A';
+  const s = str.toString();
+  return s.length > max ? s.slice(0, max - 3) + '...' : s;
+};
+
 /**
- * Generate PDF Invoice for a booking
- * @param {Object} options - Invoice generation options
- * @param {Object} options.booking - Booking details
- * @param {Object} options.vehicle - Vehicle details
- * @param {Object} options.customer - Customer details
- * @param {Object} options.owner - Owner details
- * @param {Object} options.payment - Payment details
- * @returns {Promise<Buffer>} - PDF buffer
+ * Generate PDF Invoice — guaranteed single page.
+ * All text uses lineBreak:false so PDFKit never auto-creates a new page.
  */
 export const generateInvoicePDF = async ({
   booking,
@@ -55,354 +49,261 @@ export const generateInvoicePDF = async ({
 }) => {
   return new Promise((resolve, reject) => {
     try {
-      // Create a document
+      // autoFirstPage:false lets us control the page completely
       const doc = new PDFDocument({
         size: 'A4',
-        margin: 50,
+        margin: 0,
+        autoFirstPage: false,
         info: {
           Title: `Invoice - ${generateInvoiceNumber(booking._id)}`,
           Author: 'RentX - Vehicle Rental System',
-          Subject: 'Booking Invoice',
-          Keywords: 'invoice, rental, booking'
+          Subject: 'Booking Invoice'
         }
       });
 
-      // Buffer to store PDF
+      doc.addPage({ size: 'A4', margin: 0 });
+
       const chunks = [];
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // Generate invoice number
       const invoiceNumber = generateInvoiceNumber(booking._id);
-      const invoiceDate = formatDate(new Date());
+      const invoiceDate   = formatDate(new Date());
 
-      // Colors
-      const primaryColor = '#2563eb'; // Blue
-      const textColor = '#1f2937'; // Dark gray
-      const lightGray = '#f3f4f6';
-      const borderColor = '#e5e7eb';
+      // Layout constants
+      const PW   = 595;  // page width
+      const PH   = 842;  // page height
+      const ML   = 40;   // left margin
+      const MR   = 40;   // right margin
+      const CW   = PW - ML - MR;  // content width = 515
 
-      // =====================
-      // HEADER WITH LOGO
-      // =====================
-      doc.fontSize(28)
-         .fillColor(primaryColor)
-         .font('Helvetica-Bold')
-         .text('RentX', 50, 50);
+      const PRIMARY  = '#2563eb';
+      const TEXT     = '#1f2937';
+      const LGRAY    = '#f3f4f6';
+      const BORDER   = '#e5e7eb';
+      const GREEN    = '#10b981';
+      const WHITE    = '#ffffff';
 
-      doc.fontSize(10)
-         .fillColor(textColor)
-         .font('Helvetica')
-         .text('Vehicle Rental System', 50, 85);
+      // Helper: right-aligned text within content area
+      const textRight = (txt, y, opts = {}) => {
+        doc.text(txt, ML, y, { align: 'right', width: CW, lineBreak: false, ...opts });
+      };
 
-      // Invoice title on right
-      doc.fontSize(24)
-         .fillColor(textColor)
-         .font('Helvetica-Bold')
-         .text('INVOICE', 400, 50, { align: 'right' });
+      // Helper: left text, no wrap
+      const textLeft = (txt, x, y, opts = {}) => {
+        doc.text(txt, x, y, { lineBreak: false, ...opts });
+      };
 
-      // Verified badge
-      doc.fontSize(10)
-         .fillColor('#10b981') // Green
-         .font('Helvetica-Bold')
-         .text('✓ VERIFIED BY RENTX', 400, 80, { align: 'right' });
+      // ── HEADER ──────────────────────────────────────────────
+      // Blue header band
+      doc.rect(0, 0, PW, 80).fill(PRIMARY);
 
-      // Line separator
-      doc.moveTo(50, 110)
-         .lineTo(545, 110)
-         .strokeColor(primaryColor)
-         .lineWidth(2)
-         .stroke();
+      doc.fontSize(28).fillColor(WHITE).font('Helvetica-Bold');
+      textLeft('RentX', ML, 18);
 
-      // =====================
-      // INVOICE DETAILS
-      // =====================
-      let yPosition = 130;
+      doc.fontSize(9).fillColor(WHITE).font('Helvetica');
+      textLeft('Vehicle Rental System', ML, 52);
 
-      doc.fontSize(10)
-         .fillColor(textColor)
-         .font('Helvetica-Bold')
-         .text('Invoice Number:', 50, yPosition);
+      doc.fontSize(22).fillColor(WHITE).font('Helvetica-Bold');
+      textRight('INVOICE', 18);
 
-      doc.font('Helvetica')
-         .text(invoiceNumber, 150, yPosition);
+      doc.fontSize(9).fillColor(GREEN).font('Helvetica-Bold');
+      textRight('VERIFIED', 54);
 
-      doc.font('Helvetica-Bold')
-         .text('Invoice Date:', 350, yPosition);
+      // ── INVOICE META ─────────────────────────────────────────
+      let y = 95;
 
-      doc.font('Helvetica')
-         .text(invoiceDate, 430, yPosition);
+      doc.fontSize(8).fillColor(TEXT);
 
-      yPosition += 20;
+      doc.font('Helvetica-Bold'); textLeft('Invoice No:', ML, y);
+      doc.font('Helvetica');      textLeft(invoiceNumber, 130, y);
 
-      doc.font('Helvetica-Bold')
-         .text('Booking ID:', 50, yPosition);
+      doc.font('Helvetica-Bold'); textLeft('Date:', 370, y);
+      doc.font('Helvetica');      textLeft(invoiceDate, 405, y);
 
-      doc.font('Helvetica')
-         .text(booking._id.toString().toUpperCase(), 150, yPosition);
+      y += 14;
 
-      doc.font('Helvetica-Bold')
-         .text('Payment Status:', 350, yPosition);
+      doc.font('Helvetica-Bold'); textLeft('Booking ID:', ML, y);
+      doc.font('Helvetica');      textLeft(trunc(booking._id.toString().toUpperCase(), 32), 130, y);
 
-      doc.fillColor('#10b981')
-         .font('Helvetica-Bold')
-         .text(booking.paymentStatus || 'Paid', 430, yPosition);
+      doc.font('Helvetica-Bold'); textLeft('Status:', 370, y);
+      doc.fillColor(GREEN).font('Helvetica-Bold');
+      textLeft(booking.paymentStatus || 'Paid', 405, y);
 
-      // =====================
-      // CUSTOMER & OWNER INFO
-      // =====================
-      yPosition = 180;
+      // ── CUSTOMER / OWNER ─────────────────────────────────────
+      y = 128;
+      const boxH = 72;
 
-      // Background boxes
-      doc.rect(50, yPosition, 235, 100)
-         .fillAndStroke(lightGray, borderColor);
+      doc.rect(ML, y, 245, boxH).fillAndStroke(LGRAY, BORDER);
+      doc.rect(310, y, 245, boxH).fillAndStroke(LGRAY, BORDER);
 
-      doc.rect(310, yPosition, 235, 100)
-         .fillAndStroke(lightGray, borderColor);
+      // Billed To
+      doc.fillColor(PRIMARY).fontSize(9).font('Helvetica-Bold');
+      textLeft('BILLED TO', 50, y + 7);
 
-      // Customer details
-      yPosition += 15;
-      doc.fillColor(primaryColor)
-         .fontSize(11)
-         .font('Helvetica-Bold')
-         .text('BILLED TO', 60, yPosition);
+      doc.fillColor(TEXT).fontSize(8).font('Helvetica-Bold');
+      textLeft(trunc(customer.fullname || customer.username, 35), 50, y + 20);
 
-      yPosition += 20;
-      doc.fillColor(textColor)
-         .fontSize(10)
-         .font('Helvetica-Bold')
-         .text(customer.fullname || customer.username, 60, yPosition);
-
-      yPosition += 15;
-      doc.font('Helvetica')
-         .text(customer.email, 60, yPosition);
+      doc.font('Helvetica');
+      textLeft(trunc(customer.email, 38), 50, y + 33);
 
       if (customer.phoneNumber) {
-        yPosition += 15;
-        doc.text(customer.phoneNumber, 60, yPosition);
+        textLeft(trunc(customer.phoneNumber, 20), 50, y + 46);
       }
 
-      // Owner details
-      yPosition = 195;
-      doc.fillColor(primaryColor)
-         .fontSize(11)
-         .font('Helvetica-Bold')
-         .text('RENTAL PROVIDER', 320, yPosition);
+      // Rental Provider
+      doc.fillColor(PRIMARY).fontSize(9).font('Helvetica-Bold');
+      textLeft('RENTAL PROVIDER', 320, y + 7);
 
-      yPosition += 20;
-      doc.fillColor(textColor)
-         .fontSize(10)
-         .font('Helvetica-Bold')
-         .text(owner.storeName, 320, yPosition);
+      doc.fillColor(TEXT).fontSize(8).font('Helvetica-Bold');
+      textLeft(trunc(owner.storeName, 35), 320, y + 20);
 
-      yPosition += 15;
-      doc.font('Helvetica')
-         .text(owner.address || 'N/A', 320, yPosition, { width: 215 });
+      doc.font('Helvetica');
+      textLeft(trunc(owner.address || 'N/A', 38), 320, y + 33);
 
       if (owner.phoneNumber) {
-        yPosition += 15;
-        doc.text(owner.phoneNumber, 320, yPosition);
+        textLeft(trunc(owner.phoneNumber, 20), 320, y + 46);
       }
 
-      // =====================
-      // BOOKING DETAILS TABLE
-      // =====================
-      yPosition = 310;
+      // ── BOOKING DETAILS TABLE ────────────────────────────────
+      y = 212;
 
-      doc.fillColor(primaryColor)
-         .fontSize(12)
-         .font('Helvetica-Bold')
-         .text('BOOKING DETAILS', 50, yPosition);
+      doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold');
+      textLeft('BOOKING DETAILS', ML, y);
 
-      yPosition += 25;
+      y += 16;
 
       // Table header
-      doc.rect(50, yPosition, 495, 25)
-         .fillAndStroke(primaryColor, primaryColor);
+      doc.rect(ML, y, CW, 20).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(8).font('Helvetica-Bold');
+      textLeft('VEHICLE',    52,  y + 6);
+      textLeft('START DATE', 240, y + 6);
+      textLeft('END DATE',   340, y + 6);
+      textLeft('DAYS',       470, y + 6);
 
-      doc.fillColor('#ffffff')
-         .fontSize(10)
-         .font('Helvetica-Bold')
-         .text('VEHICLE', 60, yPosition + 8)
-         .text('START DATE', 250, yPosition + 8)
-         .text('END DATE', 350, yPosition + 8)
-         .text('DAYS', 450, yPosition + 8);
+      // Table row
+      y += 20;
+      doc.rect(ML, y, CW, 22).fillAndStroke(WHITE, BORDER);
+      doc.fillColor(TEXT).fontSize(8).font('Helvetica');
+      textLeft(trunc(vehicle.name, 28),              52,  y + 7);
+      textLeft(formatDate(booking.startDate),        240, y + 7);
+      textLeft(formatDate(booking.endDate),          340, y + 7);
+      textLeft(booking.numberOfDays.toString(),      470, y + 7);
 
-      // Table content
-      yPosition += 25;
-      doc.rect(50, yPosition, 495, 30)
-         .fillAndStroke('#ffffff', borderColor);
+      // Locations
+      y += 28;
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(TEXT);
+      textLeft('Pickup:', 50, y);
+      doc.font('Helvetica');
+      textLeft(trunc(booking.pickupLocation || 'Not specified', 65), 110, y);
 
-      doc.fillColor(textColor)
-         .font('Helvetica')
-         .text(vehicle.name, 60, yPosition + 10, { width: 180 })
-         .text(formatDate(booking.startDate), 250, yPosition + 10)
-         .text(formatDate(booking.endDate), 350, yPosition + 10)
-         .text(booking.numberOfDays.toString(), 450, yPosition + 10);
+      y += 14;
+      doc.font('Helvetica-Bold');
+      textLeft('Return:', 50, y);
+      doc.font('Helvetica');
+      textLeft(trunc(booking.returnLocation || 'Not specified', 65), 110, y);
 
-      // =====================
-      // RENTAL LOCATIONS
-      // =====================
-      yPosition += 50;
+      // ── PRICING BREAKDOWN ─────────────────────────────────────
+      y += 22;
 
-      doc.fillColor(textColor)
-         .fontSize(9)
-         .font('Helvetica-Bold')
-         .text('Pickup Location:', 60, yPosition);
+      // Section label
+      doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold');
+      textLeft('PRICING BREAKDOWN', ML, y);
 
-      doc.font('Helvetica')
-         .text(booking.pickupLocation, 160, yPosition, { width: 380 });
+      y += 16;
 
-      yPosition += 20;
+      // Thin separator
+      doc.moveTo(ML, y).lineTo(ML + CW, y).strokeColor(BORDER).lineWidth(1).stroke();
+      y += 10;
 
-      doc.font('Helvetica-Bold')
-         .text('Return Location:', 60, yPosition);
-
-      doc.font('Helvetica')
-         .text(booking.returnLocation, 160, yPosition, { width: 380 });
-
-      // =====================
-      // PRICING BREAKDOWN
-      // =====================
-      yPosition += 40;
-
-      doc.fillColor(primaryColor)
-         .fontSize(12)
-         .font('Helvetica-Bold')
-         .text('PRICING BREAKDOWN', 50, yPosition);
-
-      yPosition += 25;
-
-      // Price per day
-      const pricePerDay = booking.totalAmount / booking.numberOfDays;
-
-      doc.fillColor(textColor)
-         .fontSize(10)
-         .font('Helvetica')
-         .text('Price per day:', 60, yPosition);
-
-      doc.text(formatCurrency(pricePerDay), 450, yPosition, { align: 'right' });
-
-      yPosition += 20;
-
-      doc.text(`Number of days: ${booking.numberOfDays}`, 60, yPosition);
-
-      yPosition += 20;
-
-      // Separator line
-      doc.moveTo(50, yPosition)
-         .lineTo(545, yPosition)
-         .strokeColor(borderColor)
-         .lineWidth(1)
-         .stroke();
-
-      yPosition += 15;
-
-      // Subtotal
-      doc.font('Helvetica')
-         .text('Subtotal:', 60, yPosition);
-
-      doc.text(formatCurrency(booking.totalAmount), 450, yPosition, { align: 'right' });
-
-      yPosition += 20;
-
-      // Tax (GST - 18% for illustration, adjust as needed)
-      const taxRate = 0.18; // 18% GST
-      const taxAmount = booking.totalAmount * taxRate;
-
-      doc.text('GST (18%):', 60, yPosition);
-      doc.text(formatCurrency(taxAmount), 450, yPosition, { align: 'right' });
-
-      yPosition += 25;
-
-      // Total background
-      doc.rect(50, yPosition - 5, 495, 30)
-         .fillAndStroke(lightGray, borderColor);
-
-      // Total amount
+      const pricePerDay  = booking.totalAmount / booking.numberOfDays;
+      const taxRate      = 0.18;
+      const taxAmount    = booking.totalAmount * taxRate;
       const totalWithTax = booking.totalAmount + taxAmount;
 
-      doc.fillColor(primaryColor)
-         .fontSize(12)
-         .font('Helvetica-Bold')
-         .text('TOTAL AMOUNT:', 60, yPosition + 5);
+      // Price per day row
+      doc.fillColor(TEXT).fontSize(9).font('Helvetica');
+      textLeft('Price per day:', 50, y);
+      textRight(formatCurrency(pricePerDay), y);
 
-      doc.fontSize(14)
-         .text(formatCurrency(totalWithTax), 450, yPosition + 5, { align: 'right' });
+      y += 15;
+      textLeft(`Number of days: ${booking.numberOfDays}`, 50, y);
 
-      // =====================
-      // PAYMENT DETAILS
-      // =====================
-      yPosition += 50;
+      y += 14;
+      doc.moveTo(ML, y).lineTo(ML + CW, y).strokeColor(BORDER).lineWidth(1).stroke();
+      y += 10;
 
-      doc.fillColor(primaryColor)
-         .fontSize(12)
-         .font('Helvetica-Bold')
-         .text('PAYMENT DETAILS', 50, yPosition);
+      // Subtotal
+      doc.font('Helvetica').fillColor(TEXT).fontSize(9);
+      textLeft('Subtotal:', 50, y);
+      textRight(formatCurrency(booking.totalAmount), y);
 
-      yPosition += 25;
+      y += 15;
 
-      doc.fillColor(textColor)
-         .fontSize(10)
-         .font('Helvetica-Bold')
-         .text('Payment Method:', 60, yPosition);
+      // GST
+      textLeft('GST (18%):', 50, y);
+      textRight(formatCurrency(taxAmount), y);
 
-      doc.font('Helvetica')
-         .text(payment?.paymentMethod || 'UPI', 160, yPosition);
+      y += 12;
 
-      yPosition += 20;
+      // ── TOTAL AMOUNT BOX (prominent, full-width) ─────────────
+      const totalBoxH = 44;
+      doc.rect(ML, y, CW, totalBoxH).fill(PRIMARY);
 
-      doc.font('Helvetica-Bold')
-         .text('Transaction ID:', 60, yPosition);
+      // Label on the left
+      doc.fillColor(WHITE).fontSize(12).font('Helvetica-Bold');
+      textLeft('TOTAL RENTAL AMOUNT:', 55, y + 14);
 
-      doc.font('Helvetica')
-         .text(payment?.transactionId || 'N/A', 160, yPosition);
+      // Amount on the right — large and clear
+      doc.fontSize(16).font('Helvetica-Bold').fillColor(WHITE);
+      textRight(formatCurrency(totalWithTax), y + 13);
 
-      yPosition += 20;
+      // ── PAYMENT DETAILS ───────────────────────────────────────
+      y += totalBoxH + 18;
 
-      doc.font('Helvetica-Bold')
-         .text('Payment Date:', 60, yPosition);
+      doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold');
+      textLeft('PAYMENT DETAILS', ML, y);
 
-      doc.font('Helvetica')
-         .text(payment?.createdAt ? formatDate(payment.createdAt) : invoiceDate, 160, yPosition);
+      y += 16;
 
-      // =====================
-      // FOOTER
-      // =====================
-      const pageHeight = doc.page.height;
+      doc.fillColor(TEXT).fontSize(8).font('Helvetica-Bold');
+      textLeft('Payment Method:', 50, y);
+      doc.font('Helvetica');
+      textLeft(trunc(payment?.paymentMethod || 'UPI', 20), 145, y);
 
-      // Footer background
-      doc.rect(0, pageHeight - 100, 595, 100)
-         .fillAndStroke(lightGray, lightGray);
+      doc.font('Helvetica-Bold');
+      textLeft('Transaction ID:', 310, y);
+      doc.font('Helvetica');
+      textLeft(trunc(payment?.transactionId || 'N/A', 22), 400, y);
 
-      // Thank you message
-      doc.fillColor(primaryColor)
-         .fontSize(14)
-         .font('Helvetica-Bold')
-         .text('Thank you for choosing RentX!', 50, pageHeight - 75, {
-           align: 'center',
-           width: 495
-         });
+      y += 14;
+      doc.font('Helvetica-Bold');
+      textLeft('Payment Date:', 50, y);
+      doc.font('Helvetica');
+      textLeft(payment?.createdAt ? formatDate(payment.createdAt) : invoiceDate, 145, y);
 
-      // Contact info
-      doc.fillColor(textColor)
-         .fontSize(9)
-         .font('Helvetica')
-         .text('For any queries, please contact us at support@rentx.com | +91 9876543210', 50, pageHeight - 50, {
-           align: 'center',
-           width: 495
-         });
+      // ── FOOTER ───────────────────────────────────────────────
+      const footerY = PH - 55;
+      doc.rect(0, footerY, PW, 55).fill(LGRAY);
 
-      // Verified message
-      doc.fontSize(8)
-         .fillColor('#10b981')
-         .text('This is a computer-generated invoice verified and issued by RentX', 50, pageHeight - 30, {
-           align: 'center',
-           width: 495
-         });
+      doc.moveTo(0, footerY).lineTo(PW, footerY).strokeColor(PRIMARY).lineWidth(2).stroke();
 
-      // Finalize PDF
+      doc.fillColor(PRIMARY).fontSize(11).font('Helvetica-Bold');
+      doc.text('Thank you for choosing RentX!', ML, footerY + 12, {
+        align: 'center', width: CW, lineBreak: false
+      });
+
+      doc.fillColor(TEXT).fontSize(7.5).font('Helvetica');
+      doc.text('support@rentx.com  |  +91 9876543210', ML, footerY + 28, {
+        align: 'center', width: CW, lineBreak: false
+      });
+
+      doc.fillColor(GREEN).fontSize(7);
+      doc.text('Computer-generated invoice — verified by RentX', ML, footerY + 41, {
+        align: 'center', width: CW, lineBreak: false
+      });
+
       doc.end();
 
     } catch (error) {
@@ -411,79 +312,46 @@ export const generateInvoicePDF = async ({
   });
 };
 
-/**
- * Save invoice PDF to file system
- * @param {Buffer} pdfBuffer - PDF buffer
- * @param {String} bookingId - Booking ID
- * @returns {Promise<String>} - File path
- */
 export const saveInvoiceToFile = async (pdfBuffer, bookingId) => {
   try {
-    // Create invoices directory if it doesn't exist
     const invoicesDir = path.join(__dirname, '../../invoices');
     if (!fs.existsSync(invoicesDir)) {
       fs.mkdirSync(invoicesDir, { recursive: true });
     }
-
-    // Generate file name
     const fileName = `invoice_${bookingId}_${Date.now()}.pdf`;
-    const filePath = path.join(invoicesDir, fileName);
-
-    // Write file
+    const filePath  = path.join(invoicesDir, fileName);
     fs.writeFileSync(filePath, pdfBuffer);
-
-    console.log(`✅ Invoice saved: ${filePath}`);
     return filePath;
-
   } catch (error) {
-    console.error('❌ Error saving invoice:', error);
+    console.error('Error saving invoice:', error);
     throw error;
   }
 };
 
-/**
- * Generate invoice and return buffer
- * @param {String} bookingId - Booking ID
- * @returns {Promise<Buffer>} - PDF buffer
- */
 export const generateInvoiceForBooking = async (bookingId) => {
   try {
-    // Import models (using dynamic import to avoid circular dependencies)
     const { Booking } = await import('../models/datamodels/booking.model.js');
     const { Vehicle } = await import('../models/datamodels/vehicle.model.js');
-    const { User } = await import('../models/datamodels/user.model.js');
-    const { Owner } = await import('../models/datamodels/owner.model.js');
+    const { User }    = await import('../models/datamodels/user.model.js');
+    const { Owner }   = await import('../models/datamodels/owner.model.js');
     const { Payment } = await import('../models/datamodels/payment.model.js');
 
-    // Fetch booking details
     const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      throw new Error('Booking not found');
-    }
+    if (!booking) throw new Error('Booking not found');
 
-    // Fetch related data
-    const vehicle = await Vehicle.findById(booking.vehicleId);
+    const vehicle  = await Vehicle.findById(booking.vehicleId);
     const customer = await User.findById(booking.userId);
-    const owner = await Owner.findById(booking.ownerId);
-    const payment = await Payment.findOne({ bookingId: booking._id });
+    const owner    = await Owner.findById(booking.ownerId);
+    const payment  = await Payment.findOne({ bookingId: booking._id });
 
     if (!vehicle || !customer || !owner) {
       throw new Error('Missing required data for invoice generation');
     }
 
-    // Generate PDF
-    const pdfBuffer = await generateInvoicePDF({
-      booking,
-      vehicle,
-      customer,
-      owner,
-      payment
-    });
-
-    return pdfBuffer;
+    return await generateInvoicePDF({ booking, vehicle, customer, owner, payment });
 
   } catch (error) {
-    console.error('❌ Error generating invoice:', error);
+    console.error('Error generating invoice:', error);
     throw error;
   }
 };

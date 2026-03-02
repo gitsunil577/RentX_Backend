@@ -2,7 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { Cart } from "../models/datamodels/cart.model.js";
-import { Vehicle } from "../models/datamodels/vehicle.model.js";
+
 
 
 const addToCart = asyncHandler(async (req, res) => {

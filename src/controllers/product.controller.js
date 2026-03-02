@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { Seller } from "../models/datamodels/seller.model.js";
 import { Product } from "../models/datamodels/product.model.js";
 import { Category } from "../models/datamodels/category.model.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";

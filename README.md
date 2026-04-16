@@ -9,7 +9,7 @@ RESTful API backend for RentX_Backend - A premium vehicle rental platform. Built
 
 ## 🚀 Features
 
-- **User Authentication** - JWT-based authentication with access & refresh tokens
+- **User Authentication** - JWT-based authentication with access & refresh tokens.
 - **Role-based Access Control** - Separate permissions for Owners and Customers
 - **Vehicle Management** - CRUD operations for vehicles with image uploads
 - **Booking System** - Complete booking workflow with status management
